@@ -292,7 +292,12 @@ local function CheckUSRCandidate(ux, uy, occupancy, rooms)
             end
             if d == 2 then
                 distance2List[#distance2List + 1] = R
-                distance2Count = distance2Count + 1
+                -- 统计该房间中与候选点曼哈顿距离恰好为 2 的格点数量
+                for _, c in ipairs(R.cells) do
+                    if ManhattanDist(c.x, c.y, ux, uy) == 2 then
+                        distance2Count = distance2Count + 1
+                    end
+                end
             end
         end
     end
