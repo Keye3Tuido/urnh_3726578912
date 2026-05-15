@@ -20,7 +20,7 @@ Hold the [b]Drop key[/b], and hints will appear on every red door outline:
   ✦ Cyan numbers — the spots behind this door match the Ultra Secret Room spawn rules; the digits show the count of valid spots and how many rooms each spot connects to.
 No more guesswork. [b]Open the right red door[/b], starting here.
     </description>
-    <version>1.1.3</version>
+    <version>1.1.4</version>
     <visibility>Public</visibility>
     <tag id="Lua"/>
     <tag id="Rooms"/>

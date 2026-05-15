@@ -10,7 +10,7 @@
     USR 生成条件：
       1. USR 距离所有非红房间的最短曼哈顿距离 = 2
       2. USR 与不带红房间标签的 BOSS / SECRET / SUPER SECRET / CURSE 房的曼哈顿距离 > 2
-      3. 所有与 USR 距离恰好为 2 的非红房间，至少存在一条最短路径，其经过的非红房间门槽位都在该房间的 AllowedDoors 内
+      3. 所有与 USR 距离恰好为 2 的非红房间，其到 USR 的每一条最短路径，经过的非红房间门槽位都必须在该房间的 AllowedDoors 内
       4. USR 在 (0..12, 0..12) 合法地图格点上，且未被任何房间占据
 ]]
 
@@ -239,13 +239,15 @@ end
 -- 4. USR 条件判定
 ----------------------------------------------------------------
 
--- 条件 3：对距离 USR 候选恰好为 2 的非红房间 R，必须存在一条最短路径使其经过的非红房间门槽都在 AllowedDoors 内。
+-- 条件 3：对距离 USR 候选恰好为 2 的非红房间 R，从 R 内每个距离为 2 的格点到 USR 的所有最短路径，其首步出门槽位都必须在 AllowedDoors 内。
 -- 由条件 1 已经保证 USR 周围 1 格内不存在任何非红房间，因此最短路径上唯一需要校验的非红房间门槽即 R 自己最近格点朝 USR 出去的那一步。
+-- 任一最短路径首步走的门槽未开放（或结构上不存在）即否决该候选。
 local function CheckCondition3ForRoom(R, ux, uy)
     local doors = R.doors
     local slotMap = CellDirToSlot[R.shape]
     if not slotMap then return false end
 
+    local checkedAny = false
     for _, c in ipairs(R.cells) do
         if ManhattanDist(c.x, c.y, ux, uy) == 2 then
             local dx, dy = ux - c.x, uy - c.y
@@ -255,18 +257,21 @@ local function CheckCondition3ForRoom(R, ux, uy)
 
             local cKey = (c.x - R.refX) .. "," .. (c.y - R.refY)
             local cellSlots = slotMap[cKey]
-            if cellSlots then
-                for _, d in ipairs(dirs) do
-                    local dKey = d.x .. "," .. d.y
-                    local slot = cellSlots[dKey]
-                    if slot ~= nil and (doors & (1 << slot)) ~= 0 then
-                        return true
-                    end
+            for _, d in ipairs(dirs) do
+                local dKey = d.x .. "," .. d.y
+                local slot = cellSlots and cellSlots[dKey] or nil
+                if slot == nil then
+                    -- 该方向结构上没有门槽，最短路径首步无法穿出
+                    return false
                 end
+                if (doors & (1 << slot)) == 0 then
+                    return false
+                end
+                checkedAny = true
             end
         end
     end
-    return false
+    return checkedAny
 end
 
 -- 候选格点 (ux,uy) 是否满足全部 USR 生成条件
