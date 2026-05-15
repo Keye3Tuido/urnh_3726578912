@@ -175,7 +175,7 @@ local SPECIAL_NONRED_TYPES = {
 }
 
 local function IsRedRoom(roomInfo)
-    return roomInfo.flags and (roomInfo.flags & RoomDescriptor.FLAG_RED_ROOM) > 0
+    return (roomInfo.flags & RoomDescriptor.FLAG_RED_ROOM) > 0 or roomInfo.type == RoomType.ROOM_ULTRASECRET
 end
 
 -- 给定一个 RoomDescriptor，按 SafeGridIndex + ShapeFootprint 拆出全部格点
@@ -209,7 +209,8 @@ local function CollectOtherRooms()
     for i = 0, 168 do
         local r = level:GetRoomByIdx(i)
         if r and r.Data and not seen[r.SafeGridIndex]
-           and r.Data.Type ~= RoomType.ROOM_ULTRASECRET then
+           and r.Data.Type ~= RoomType.ROOM_ULTRASECRET
+           and r.Flags & RoomDescriptor.FLAG_RED_ROOM == 0 then
             seen[r.SafeGridIndex] = true
             local info = MakeRoomInfo(r)
             if info then
@@ -283,7 +284,9 @@ local function CheckUSRCandidate(ux, uy, occupancy, rooms)
         if not IsRedRoom(R) then
             local d = MinDistToRoom(ux, uy, R)
             if d < minD then minD = d end
-            -- 条件 2
+            -- 距离USR过近
+            if d < 2 then return false, 0 end
+            -- 与特殊房间距离过近
             if d <= 2 and SPECIAL_NONRED_TYPES[R.type] then
                 return false, 0
             end
@@ -294,10 +297,10 @@ local function CheckUSRCandidate(ux, uy, occupancy, rooms)
         end
     end
 
-    -- 条件 1
+    -- 距离关系不符
     if minD ~= 2 then return false, 0 end
 
-    -- 条件 3
+    -- 检查是否存在堵门情况
     for _, R in ipairs(distance2List) do
         if not CheckCondition3ForRoom(R, ux, uy) then
             return false, 0
@@ -309,8 +312,7 @@ end
 -- 给定当前房间和门槽，沿直线 / 折线延伸 2 个曼哈顿距离的 3 个候选格点
 local function GetCandidates(currentInfo, slot)
     local extMap = Slot2ExtOffset[currentInfo.shape]
-    if not extMap then return {} end
-    local ext = extMap[slot]
+    local ext = extMap and extMap[slot]
     if not ext then return {} end
     local d = SlotDir[slot]
     local ex, ey = currentInfo.refX + ext.x, currentInfo.refY + ext.y
@@ -322,91 +324,102 @@ local function GetCandidates(currentInfo, slot)
     }
 end
 
+
+-- 该楼层存在USR
+local USR_EXISTS = false
+local function USRExists()
+    local level = Game():GetLevel()
+    local rooms = level:GetRooms()
+    for i=1,rooms.Size do
+        local room = rooms:Get(i-1)
+        if room.Data and room.Data.Type == RoomType.ROOM_ULTRASECRET then
+            return true
+        end
+    end
+    return false
+end
+
+UltraRoomNotHere:AddCallback(ModCallbacks.MC_POST_NEW_ROOM, function()
+    USR_EXISTS = USRExists()
+end)
+
+-- 饰品键被按下
+local KeyType = ButtonAction.ACTION_DROP
+local KeyPressed = false
+UltraRoomNotHere:AddCallback(ModCallbacks.MC_POST_RENDER, function()
+    for i=1, Game():GetNumPlayers() do
+        local player = Isaac.GetPlayer(i-1)
+        if Input.IsActionPressed(KeyType, player.ControllerIndex) then
+            KeyPressed = true
+            return
+        end
+    end
+    KeyPressed = false
+end)
 ----------------------------------------------------------------
 -- 5. 渲染
 ----------------------------------------------------------------
 
-local font = Font()
-font:Load('font/luaminioutlined.fnt')
-local TEXT_SCALE = 0.6
-
-local function DrawCentered(text, sx, sy, kcolor)
-    local w = font:GetStringWidth(text) * TEXT_SCALE
-    local h = font:GetBaselineHeight() * TEXT_SCALE
-    font:DrawStringScaled(text, sx - w / 2, sy - h / 2, TEXT_SCALE, TEXT_SCALE, kcolor)
-end
-
-local KCOLOR_FAIL  = KColor(1.0, 0.25, 0.25, 1)
-local KCOLOR_VALID = KColor(0.4, 1.0, 0.4, 1)
-local KCOLOR_INFO  = KColor(0.6, 1.0, 1.0, 1)
-
 -- 一个 DOOR_OUTLINE 实体到最近槽位的最大允许世界距离（像素）
 local SLOT_MATCH_THRESHOLD = 40
 
-UltraRoomNotHere:AddCallback(ModCallbacks.MC_POST_RENDER, function(_)
-    if Game():IsPaused() then return end
+UltraRoomNotHere:AddCallback(ModCallbacks.MC_POST_EFFECT_RENDER, function(_, effect, renderOffset)
     if not Game():GetHUD():IsVisible() then return end
+    if not USR_EXISTS then return end
+    if not KeyPressed then return end
 
     local level = Game():GetLevel()
     local currentDesc = level:GetCurrentRoomDesc()
     if not currentDesc or not currentDesc.Data then return end
 
-    local outlines = Isaac.FindByType(EntityType.ENTITY_EFFECT,
-        EffectVariant.DOOR_OUTLINE, -1, false, false)
-    if #outlines == 0 then return end
-
-    local occupancy, rooms = CollectOtherRooms()
     local currentInfo = MakeRoomInfo(currentDesc)
     if not currentInfo then return end
 
     local validSlotMap = Slot2ExtOffset[currentInfo.shape]
     if not validSlotMap then return end
 
+    -- 找到该 DOOR_OUTLINE 对应的门槽
     local room = Game():GetRoom()
-    local slotPositions = {}
+    local closestSlot, closestDist = -1, math.huge
     for s = 0, 7 do
         if validSlotMap[s] then
-            slotPositions[s] = room:GetDoorSlotPosition(s)
-        end
-    end
-
-    for _, eff in ipairs(outlines) do
-        local closestSlot, closestDist = -1, math.huge
-        for s, pos in pairs(slotPositions) do
-            local d = eff.Position:Distance(pos)
+            local pos = room:GetDoorSlotPosition(s)
+            local d = effect.Position:Distance(pos)
             if d < closestDist then
                 closestDist = d
                 closestSlot = s
             end
         end
+    end
+    if closestSlot < 0 or closestDist > SLOT_MATCH_THRESHOLD then return end
 
-        if closestSlot >= 0 and closestDist <= SLOT_MATCH_THRESHOLD then
-            local candidates = GetCandidates(currentInfo, closestSlot)
-            local validDistanceCounts = {}
-            for _, cand in ipairs(candidates) do
-                local ok, cnt = CheckUSRCandidate(cand.x, cand.y, occupancy, rooms)
-                if ok then
-                    validDistanceCounts[#validDistanceCounts + 1] = cnt
-                end
-            end
-
-            local screen = Isaac.WorldToScreen(eff.Position)
-            local validN = #validDistanceCounts
-            local totalN = #candidates
-
-            if validN == 0 then
-                DrawCentered("X", screen.X, screen.Y, KCOLOR_FAIL)
-            else
-                local invalidN = totalN - validN
-                DrawCentered(validN .. "/" .. invalidN,
-                    screen.X, screen.Y - 5, KCOLOR_VALID)
-                local detail = ""
-                for i, cnt in ipairs(validDistanceCounts) do
-                    if i > 1 then detail = detail .. "," end
-                    detail = detail .. cnt
-                end
-                DrawCentered(detail, screen.X, screen.Y + 5, KCOLOR_INFO)
-            end
+    -- 计算三个候选点位
+    local occupancy, rooms = CollectOtherRooms()
+    local candidates = GetCandidates(currentInfo, closestSlot)
+    local validDistanceCounts = {}
+    for _, cand in ipairs(candidates) do
+        local ok, cnt = CheckUSRCandidate(cand.x, cand.y, occupancy, rooms)
+        if ok then
+            validDistanceCounts[#validDistanceCounts + 1] = cnt
         end
     end
-end)
+
+    local screen = Isaac.WorldToRenderPosition(effect.Position) + renderOffset
+    local validN = #validDistanceCounts
+
+    local textScale = 1
+    local text = ''
+    local r,g,b,a = 0, 0, 0, 0
+    if validN == 0 then
+        text = 'x'
+        r, g, b, a = 1, 0, 0, 1
+    else
+        local parts = {}
+        for _, cnt in ipairs(validDistanceCounts) do
+            parts[#parts + 1] = tostring(cnt)
+        end
+        text = table.concat(parts, ' ')
+        r, g, b, a = 0, 1, 1, 1
+    end
+    Isaac.RenderScaledText(text, screen.X - textScale*Isaac.GetTextWidth(text)/2, screen.Y, textScale, textScale, r, g, b, a)
+end, EffectVariant.DOOR_OUTLINE)
