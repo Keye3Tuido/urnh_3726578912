@@ -4,23 +4,23 @@
     <directory>urnh</directory>
     <id>3726578912</id>
     <description>
-[b][color=red]🩸 找不准红隐？让门框告诉你！[/color][/b]
+[b]🩸 找不准红隐？让门框告诉你！[/b]
 
-按住[b]丢弃键[/b]后，所有[color=red]红色门框[/color]上会浮现提示：
+按住[b]丢弃键[/b]后，所有红色门框上会浮现提示：
   ✦ 红色 [b]X[/b] —— 这不可能开出红隐。
   ✦ 青色数字 —— 这扇门后的点位符合红隐的生成规则，数字代表这里可能的点位数目和与点位相连的房间数目。
 不再依赖玄学，[b]精准开红隐[/b]，从这儿开始。
 
 ────────────────────────
 
-[b][color=red]🩸 Can't pin down the Ultra Secret Room? Let the door outlines tell you![/color][/b]
+[b]🩸 Can't pin down the Ultra Secret Room? Let the door outlines tell you![/b]
 
-Hold the [b]Drop key[/b], and hints will appear on every [color=red]red door outline[/color]:
+Hold the [b]Drop key[/b], and hints will appear on every red door outline:
   ✦ Red [b]X[/b] — no Ultra Secret Room can possibly spawn here.
   ✦ Cyan numbers — the spots behind this door match the Ultra Secret Room spawn rules; the digits show the count of valid spots and how many rooms each spot connects to.
 No more guesswork. [b]Open the right red door[/b], starting here.
     </description>
-    <version>1.1.0</version>
+    <version>1.1.1</version>
     <visibility>Public</visibility>
     <tag id="Lua"/>
     <tag id="Rooms"/>
